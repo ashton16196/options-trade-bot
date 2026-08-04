@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS positions (
     close_price REAL,
     open_order_id TEXT,
     close_order_id TEXT,
-    source_signal TEXT DEFAULT ''
+    source_signal TEXT DEFAULT '',
+    close_requested INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS realized_pnl (
     day TEXT NOT NULL,
@@ -98,11 +99,26 @@ class Store:
         """Atomically move OPEN → CLOSING. False if someone else got there
         first (e.g. take-profit monitor vs. a close alert racing)."""
         cur = self.conn.execute(
-            "UPDATE positions SET status=? WHERE id=? AND status=?",
+            "UPDATE positions SET status=?, close_requested=0 WHERE id=? AND status=?",
             (PositionStatus.CLOSING.value, position_id, PositionStatus.OPEN.value),
         )
         self.conn.commit()
         return cur.rowcount == 1
+
+    def update_status(self, position_id: int, status: PositionStatus) -> None:
+        self.conn.execute("UPDATE positions SET status=? WHERE id=?",
+                          (status.value, position_id))
+        self.conn.commit()
+
+    def set_close_requested(self, position_id: int) -> None:
+        self.conn.execute("UPDATE positions SET close_requested=1 WHERE id=?",
+                          (position_id,))
+        self.conn.commit()
+
+    def get_position(self, position_id: int) -> Position | None:
+        row = self.conn.execute("SELECT * FROM positions WHERE id=?",
+                                (position_id,)).fetchone()
+        return self._row_to_position(row) if row else None
 
     def positions_with_status(self, *statuses: PositionStatus) -> list[Position]:
         marks = ",".join("?" for _ in statuses)
@@ -116,9 +132,12 @@ class Store:
         return self.positions_with_status(PositionStatus.OPEN)
 
     def open_tickers(self) -> set[str]:
+        # PENDING included: a loose close alert must be able to target an
+        # entry that hasn't filled yet (so the entry gets cancelled).
         rows = self.conn.execute(
-            "SELECT DISTINCT ticker FROM positions WHERE status IN (?, ?)",
-            (PositionStatus.OPEN.value, PositionStatus.CLOSING.value),
+            "SELECT DISTINCT ticker FROM positions WHERE status IN (?, ?, ?)",
+            (PositionStatus.OPEN.value, PositionStatus.CLOSING.value,
+             PositionStatus.PENDING.value),
         ).fetchall()
         return {r["ticker"] for r in rows}
 
@@ -179,4 +198,5 @@ class Store:
             open_order_id=row["open_order_id"],
             close_order_id=row["close_order_id"],
             source_signal=row["source_signal"] or "",
+            close_requested=bool(row["close_requested"]),
         )

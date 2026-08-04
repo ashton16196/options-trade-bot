@@ -65,21 +65,24 @@ async def run_bot(config_path: str) -> None:
         max_message_length=cfg.trading.max_message_length,
     )
 
-    async def handle(text: str, message_id: str, source: str) -> None:
+    await executor.reconcile()  # re-attach to orders left in flight by a restart
+
+    async def handle(text: str, message_id: str, source: str, created_at) -> None:
         if store.already_processed(message_id):
             return
-        sig = parser.parse(text, known_tickers=store.open_tickers())
-        if sig is None:
-            return
-        sig.message_id, sig.source = message_id, source
-        log.info("SIGNAL %s %s from %s | %r",
-                 sig.action.value.upper(), sig.contract or sig.ticker, source, text[:140])
-        for note in sig.notes:
-            log.info("  parser note: %s", note)
-        try:
-            await executor.handle_signal(sig)
-        except Exception:
-            log.exception("failed handling signal %r", text[:140])
+        # created_at (Discord's timestamp) drives the staleness guard, so a
+        # gateway reconnect replaying a 3-minute-old alert doesn't get traded.
+        signals = parser.parse(text, now=created_at, known_tickers=store.open_tickers())
+        for sig in signals:
+            sig.message_id, sig.source = message_id, source
+            log.info("SIGNAL %s %s from %s | %r",
+                     sig.action.value.upper(), sig.contract or sig.ticker, source, text[:140])
+            for note in sig.notes:
+                log.info("  parser note: %s", note)
+            try:
+                await executor.handle_signal(sig)
+            except Exception:
+                log.exception("failed handling signal %r", text[:140])
 
     from .listener import DiscordListener
 

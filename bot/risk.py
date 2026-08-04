@@ -94,6 +94,8 @@ class RiskManager:
     def check_close(self) -> tuple[bool, str]:
         # Closing reduces risk, so almost nothing blocks it — but options
         # only trade during RTH, so an off-hours order would just sit.
+        # Callers persist the intent (close_requested) and the monitor
+        # executes it on the first in-hours tick.
         if self.cfg.trading.market_hours_only and not market_is_open():
-            return False, "outside regular market hours (close will be retried by monitor)"
+            return False, "outside regular market hours"
         return True, "ok"

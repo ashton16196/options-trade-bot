@@ -44,9 +44,14 @@ class MonitorConfig:
     eod_close_time: str | None = "15:50"
 
     def eod_close(self) -> time | None:
-        if not self.eod_close_time:
+        v = self.eod_close_time
+        if v in (None, "", False):
             return None
-        hh, mm = self.eod_close_time.split(":")
+        if isinstance(v, int):
+            # YAML parses unquoted 15:50 as sexagesimal int 950 — undo that.
+            hh, mm = divmod(v, 60)
+            return time(hh, mm)
+        hh, mm = str(v).split(":")
         return time(int(hh), int(mm))
 
 
@@ -93,6 +98,11 @@ class Config:
             raise ValueError("contracts_per_trade must be >= 1")
         if not 0 < t.trim_fraction <= 1:
             raise ValueError("trim_fraction must be in (0, 1]")
+        try:
+            self.monitor.eod_close()  # fail at startup, not on every tick
+        except Exception as e:
+            raise ValueError(f"monitor.eod_close_time is invalid "
+                             f"({self.monitor.eod_close_time!r}): {e}") from e
 
 
 def _apply(section: object, data: dict) -> None:

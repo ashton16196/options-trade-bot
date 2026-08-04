@@ -11,9 +11,14 @@ from bot.parser import SignalParser
 NOW = datetime(2026, 8, 4, 14, 30, tzinfo=timezone.utc)
 
 
-def parse(text, *, require_keyword=True, known=frozenset()):
+def parse_all(text, *, require_keyword=True, known=frozenset()):
     p = SignalParser(require_action_keyword=require_keyword)
     return p.parse(text, now=NOW, known_tickers=known)
+
+
+def parse(text, *, require_keyword=True, known=frozenset()):
+    sigs = parse_all(text, require_keyword=require_keyword, known=known)
+    return sigs[0] if sigs else None
 
 
 # ---- entries -------------------------------------------------------------
@@ -158,3 +163,103 @@ def test_blocklisted_ticker_words():
 def test_close_only_acts_on_known_or_explicit():
     # No $-prefix, no calls/puts word, not a held ticker → no target
     assert parse("sold some stuff today", known={"SPY"}) is None
+
+
+def test_time_of_day_is_not_a_price():
+    s = parse("BTO SPY 640C 8/15 at 10:15")
+    assert s is not None and s.price is None
+
+
+def test_price_still_parses_after_time_fix():
+    assert parse("BTO SPY 640C 8/15 @ .52").price == 0.52
+    assert parse("grabbed SPX 6400C 8/5 for 2.50").price == 2.50
+
+
+# ---- regression tests from the adversarial review ------------------------
+
+def test_markdown_bold_action_words():
+    s = parse("**BTO** SPY 640C 8/15 @ .52")
+    assert s is not None and s.action is Action.OPEN
+    s = parse("🚨 BTO SPY 640C 8/15 @ .52 🚨")
+    assert s is not None and s.action is Action.OPEN
+    s = parse("**STC** SPY 640C 8/15 @ .95")
+    assert s is not None and s.action is Action.CLOSE
+
+
+def test_chatter_never_liquidates_held_positions():
+    # every one of these previously parsed as a CLOSE of the held ticker
+    assert parse("SPY selling off hard right now", known={"SPY"}) is None
+    assert parse("TSLA breaking out", known={"TSLA"}) is None
+    assert parse("NVDA closed above 190 yesterday", known={"NVDA"}) is None
+    assert parse("SPY stopped right at 640", known={"SPY"}) is None
+    assert parse("second half looking better", known={"SPY"}) is None
+
+
+def test_entry_with_incidental_close_word_is_still_entry():
+    s = parse("Breaking out! BTO SPY 650C 8/15 @ .80", known={"SPY"})
+    assert s is not None and s.action is Action.OPEN
+    assert s.contract.strike == 650.0
+
+
+def test_sell_target_in_entry_is_not_a_close():
+    s = parse("BTO SPY 640C 8/15 @ .52, will sell at 2.00")
+    assert s is not None and s.action is Action.OPEN
+    assert s.price == 0.52
+
+
+def test_exit_plan_does_not_veto_entry():
+    s = parse("BTO SPY 640C 8/15 @ .52 exit plan 1.00")
+    assert s is not None and s.action is Action.OPEN
+
+
+def test_scaling_into_is_not_a_trim():
+    assert parse("scaling into TSLA 250C 8/15 @ 2.10") is None
+
+
+def test_dte_between_ticker_and_strike():
+    s = parse("BTO SPY 0dte 640C @ .52")
+    assert s is not None and s.contract.expiration == NOW.date()
+
+
+def test_dte_beats_size_fraction():
+    s = parse("BTO SPY 640C 0dte 1/2 size @ .52")
+    assert s is not None and s.contract.expiration == NOW.date()
+
+
+def test_month_name_expiry():
+    s = parse("BTO SPY 640C Aug 15 @ .52")
+    assert s is not None and s.contract.expiration == date(2026, 8, 15)
+
+
+def test_may_is_a_month_not_a_veto():
+    s = parse("BTO SPY 640C May 15 @ .52")
+    assert s is not None and s.contract.expiration == date(2027, 5, 15)
+
+
+def test_recent_past_date_stays_in_past_for_risk_check():
+    s = parse("BTO SPY 640C 8/3 @ .52")  # yesterday-ish; risk check must reject
+    assert s is not None and s.contract.expiration == date(2026, 8, 3)
+
+
+def test_close_carries_strike_without_expiry():
+    s = parse("STC SPY 640C @ .95")
+    assert s is not None and s.action is Action.CLOSE
+    assert s.strike == 640.0 and s.contract is None
+    assert s.option_type is OptionType.CALL
+
+
+def test_multi_contract_close_yields_signal_per_contract():
+    sigs = parse_all("Closing out both: SPY 640C 8/15 @ 1.10, QQQ 570C 8/15 @ 2.30")
+    assert [s.ticker for s in sigs] == ["SPY", "QQQ"]
+    assert all(s.action is Action.CLOSE for s in sigs)
+    assert sigs[0].price == 1.10 and sigs[1].price == 2.30
+
+
+def test_profit_target_multiplier_is_not_price():
+    s = parse("looking for 2x here, BTO SPY 640C 8/15 @ .52")
+    assert s is not None and s.price == 0.52
+
+
+def test_discord_mention_is_not_price():
+    s = parse("<@987654321098765432> BTO SPY 640C 8/15 @ .52")
+    assert s is not None and s.price == 0.52

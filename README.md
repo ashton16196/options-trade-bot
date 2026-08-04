@@ -97,8 +97,14 @@ why), to the console and `bot.log`.
   `take_profit_pct` (or optional `stop_loss_pct`) hits — whichever comes
   first, group exit or your target. Positions expiring today get force-
   closed at 15:50 ET so you're never holding into the bell.
-- "watching…", "might buy…", long DD posts, and stale alerts (> 60s) are
-  deliberately ignored.
+- Close alerts that can't execute right now aren't lost: an exit posted
+  after the bell, or while an order on that position is still in flight,
+  is queued and executed on the monitor's next eligible tick. A close
+  alert that lands before your entry even filled cancels the entry.
+- "watching…", "might buy…", long DD posts, market chatter ("SPY selling
+  off", "TSLA breaking out"), and stale alerts (> 60s by Discord's own
+  timestamp) are deliberately ignored — and an exit alert naming puts
+  will never touch your calls, or the wrong strike.
 
 ## Safety rails (all in `config.yaml`)
 
@@ -162,9 +168,9 @@ group uses should have a test there.
 
 - US market holidays aren't modeled (orders would just sit and time out).
 - Multi-leg spreads aren't parsed or traded — single-leg calls/puts only.
-- Edited Discord messages are treated as new messages; alert edits that
-  change a trade are not reconciled.
-- One alert per message: if a message contains several contracts, only
-  the first is taken (logged as a parser note).
+- Edited Discord messages are not re-read: the bot acts on the original
+  text only, so an alert corrected via edit is not reconciled.
+- Entries take only the first contract in a message (multi-contract
+  *closes* are handled, one close per contract).
 - Robinhood mode: quotes/orders work but see
   `bot/brokers/robinhood.py` for the login-babysitting reality.

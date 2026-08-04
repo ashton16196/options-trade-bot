@@ -50,8 +50,9 @@ class Signal:
     ticker: str | None = None
     contract: OptionContract | None = None
     price: float | None = None
-    # Set when the alert names calls/puts even without a full contract
-    # (e.g. "selling my TSLA puts here").
+    # Strike and type survive even when the expiration couldn't be resolved
+    # (e.g. "STC SPY 640C @ .95") so closes can target the right position.
+    strike: float | None = None
     option_type: OptionType | None = None
     source: str = ""
     message_id: str | None = None
@@ -79,3 +80,7 @@ class Position:
     open_order_id: str | None = None
     close_order_id: str | None = None
     source_signal: str = ""
+    # A close alert arrived while this position couldn't be closed (entry
+    # still pending, another close in flight, or market closed). The
+    # monitor honors this flag on its next eligible tick.
+    close_requested: bool = False

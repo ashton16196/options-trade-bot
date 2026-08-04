@@ -158,10 +158,13 @@ class RobinhoodBroker(Broker):
     def _to_result(resp: dict, order_id: str | None = None) -> OrderResult:
         state = _STATE_MAP.get(str(resp.get("state", "")).lower(), OrderState.UNKNOWN)
         filled = int(_f(resp.get("processed_quantity")))
-        # Per-share price; premium fields are per-contract (x100).
-        avg = _f(resp.get("average_price")) or _f(resp.get("price"))
-        if not avg and resp.get("processed_premium") and filled:
+        # Prefer actual fill economics; 'price' is just our limit price and
+        # only serves as the last-resort fallback.
+        avg = _f(resp.get("average_price"))
+        if not avg and filled and resp.get("processed_premium"):
             avg = _f(resp["processed_premium"]) / (filled * 100)
+        if not avg:
+            avg = _f(resp.get("price"))
         return OrderResult(
             order_id=order_id or str(resp.get("id", "")),
             state=state,

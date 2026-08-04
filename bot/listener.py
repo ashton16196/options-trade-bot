@@ -42,6 +42,9 @@ class DiscordListener(discord.Client):
             text=text,
             message_id=str(message.id),
             source=f"#{message.channel}/{message.author}",
+            # Discord's own timestamp — gateway reconnects can replay old
+            # messages, and the staleness guard must see the real post time.
+            created_at=message.created_at,
         )
 
 

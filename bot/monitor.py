@@ -1,5 +1,10 @@
-"""Watches open positions: your own take-profit / stop-loss rules, plus a
-forced close for anything expiring today near the bell."""
+"""Watches open positions: the user's take-profit / stop-loss rules, queued
+close requests, and a forced close for anything expiring today near the bell.
+
+Closes are spawned as tasks, not awaited inline — one illiquid close must
+not starve TP/SL checks on every other position. try_mark_closing makes
+duplicate spawns across ticks harmless.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -22,7 +27,7 @@ class PositionMonitor:
         self.broker = broker
         self.store = store
         self.executor = executor
-        self._warned_no_quotes = False
+        self._quote_failures: dict[int, int] = {}
 
     async def run(self) -> None:
         log.info("position monitor running (every %ds, TP %+.0f%%, SL %s)",
@@ -45,24 +50,36 @@ class PositionMonitor:
         now_et = datetime.now(ET)
 
         for pos in self.store.open_positions():
+            if pos.close_requested:
+                self.executor._spawn(self.executor.close_position(
+                    pos, reason="queued close (alert arrived off-hours or mid-order)"))
+                continue
             if (eod is not None and pos.contract.expiration == now_et.date()
                     and now_et.time() >= eod):
-                await self.executor.close_position(
-                    pos, reason=f"expires today, auto-close at {eod.strftime('%H:%M')} ET")
+                self.executor._spawn(self.executor.close_position(
+                    pos, reason=f"expires today, auto-close at {eod.strftime('%H:%M')} ET"))
                 continue
             if pos.entry_price is None:
                 continue
             quote = await asyncio.to_thread(self.broker.get_quote, pos.contract)
             if quote is None or quote.mid <= 0:
-                if not self._warned_no_quotes:
-                    self._warned_no_quotes = True
-                    log.warning("no quotes available — TP/SL monitoring is inactive "
-                                "(paper mode without Robinhood credentials?)")
+                self._note_quote_failure(pos)
                 continue
+            self._quote_failures.pop(pos.id, None)
             change_pct = (quote.mid - pos.entry_price) / pos.entry_price * 100
             if change_pct >= t.take_profit_pct:
-                await self.executor.close_position(
-                    pos, reason=f"take-profit hit ({change_pct:+.0f}%)")
+                self.executor._spawn(self.executor.close_position(
+                    pos, reason=f"take-profit hit ({change_pct:+.0f}%)"))
             elif t.stop_loss_pct is not None and change_pct <= -t.stop_loss_pct:
-                await self.executor.close_position(
-                    pos, reason=f"stop-loss hit ({change_pct:+.0f}%)")
+                self.executor._spawn(self.executor.close_position(
+                    pos, reason=f"stop-loss hit ({change_pct:+.0f}%)"))
+
+    def _note_quote_failure(self, pos) -> None:
+        n = self._quote_failures.get(pos.id, 0) + 1
+        self._quote_failures[pos.id] = n
+        # Warn immediately, then roughly once a minute while it persists —
+        # a quote outage means TP/SL protection is OFF for this position.
+        if n == 1 or n % max(1, 60 // self.cfg.monitor.poll_seconds) == 0:
+            log.warning("no quote for %s from %s broker — TP/SL inactive for "
+                        "this position (%d consecutive misses)",
+                        pos.contract, self.broker.name, n)
