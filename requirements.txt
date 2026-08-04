@@ -1,0 +1,6 @@
+discord.py>=2.4
+alpaca-py>=0.42
+robin_stocks>=3.4
+pyotp>=2.9
+PyYAML>=6.0
+python-dotenv>=1.0

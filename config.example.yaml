@@ -1,0 +1,54 @@
+# Copy to config.yaml and edit. Secrets go in .env, not here.
+
+# "paper" = no real money (default — start here!)
+# "live"  = real orders; also requires TRADE_BOT_CONFIRM_LIVE=yes in .env
+mode: paper
+
+# "alpaca"    = official broker API, real paper-trading env, recommended
+# "robinhood" = unofficial API; logins need ~daily manual approval and
+#               automated access is against Robinhood's terms — see README
+broker: alpaca
+
+db_path: tradebot.db
+
+discord:
+  # Right-click a channel → "Copy Channel ID" (enable Developer Mode in
+  # Discord settings → Advanced). The bot only reads these channels.
+  channel_ids: []
+    # - 123456789012345678
+
+trading:
+  # Ignore alerts older than this (your "within 1 minute" rule)
+  max_signal_age_seconds: 60
+
+  # Position sizing
+  contracts_per_trade: 1
+  max_premium_per_trade: 500      # $ cap per trade (premium x 100 x contracts)
+  max_open_positions: 3
+  max_daily_loss: 750             # realized $ loss that halts new entries for the day
+
+  # Exits
+  take_profit_pct: 50             # sell when the option is up this %
+  stop_loss_pct: null             # e.g. 50 = sell at -50%; null disables
+  trim_fraction: 0.5              # how much to sell when the group says "trim"
+
+  # What to trade
+  ticker_allowlist: []            # empty = anything; e.g. [SPY, QQQ, TSLA]
+  ticker_blocklist: []
+  allow_0dte: true
+  allow_duplicate_contracts: false
+
+  # Parsing strictness
+  require_action_keyword: true    # false = bare "SPY 640C 8/15 @ .52" counts as entry
+  max_message_length: 280         # longer messages are commentary, never traded
+
+  # Order mechanics
+  entry_limit_buffer_pct: 2       # entry limit = ask + 2%
+  close_limit_buffer_pct: 5       # close limit = bid - 5%
+  max_slippage_from_alert_pct: 25 # skip entry if ask ran >25% past the alert price
+  fill_timeout_seconds: 45        # cancel unfilled entries after this
+  market_hours_only: true
+
+monitor:
+  poll_seconds: 5                 # how often to check open positions for TP/SL
+  eod_close_time: "15:50"         # force-close positions expiring TODAY at this ET time

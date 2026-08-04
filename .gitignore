@@ -1,0 +1,21 @@
+# Secrets & local config — never commit these
+.env
+config.yaml
+
+# Runtime state
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+bot.log
+HALT
+
+# robin_stocks cached session
+.tokens/
+robinhood.pickle
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
