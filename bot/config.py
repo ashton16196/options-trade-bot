@@ -15,6 +15,15 @@ class DiscordConfig:
 
 
 @dataclass
+class BrowserConfig:
+    # Optional: https://discord.com/channels/<server>/<channel> — opened at
+    # startup. Leave empty to navigate to the alert channel yourself.
+    channel_url: str = ""
+    poll_ms: int = 750
+    profile_dir: str = ".browser-profile"
+
+
+@dataclass
 class TradingConfig:
     max_signal_age_seconds: int = 60
     contracts_per_trade: int = 1
@@ -59,8 +68,12 @@ class MonitorConfig:
 class Config:
     mode: str = "paper"        # "paper" | "live"
     broker: str = "alpaca"     # "alpaca" (official API) | "robinhood" (unofficial)
+    # "bot"     = Discord bot in a server you control (channel-follow setup)
+    # "browser" = watch the Discord web app in a Chrome window on this machine
+    source: str = "bot"
     db_path: str = "tradebot.db"
     discord: DiscordConfig = field(default_factory=DiscordConfig)
+    browser: BrowserConfig = field(default_factory=BrowserConfig)
     trading: TradingConfig = field(default_factory=TradingConfig)
     monitor: MonitorConfig = field(default_factory=MonitorConfig)
 
@@ -78,10 +91,14 @@ class Config:
             raise ValueError(f"mode must be 'paper' or 'live', got {self.mode!r}")
         if self.broker not in ("alpaca", "robinhood"):
             raise ValueError(f"broker must be 'alpaca' or 'robinhood', got {self.broker!r}")
-        if not self.discord_token:
-            raise ValueError("DISCORD_BOT_TOKEN is not set (see .env.example)")
-        if not self.discord.channel_ids:
-            raise ValueError("discord.channel_ids is empty — set the channel(s) to watch")
+        if self.source not in ("bot", "browser"):
+            raise ValueError(f"source must be 'bot' or 'browser', got {self.source!r}")
+        if self.source == "bot":
+            if not self.discord_token:
+                raise ValueError("DISCORD_BOT_TOKEN is not set (see .env.example) — "
+                                 "or use source: browser, which needs no bot token")
+            if not self.discord.channel_ids:
+                raise ValueError("discord.channel_ids is empty — set the channel(s) to watch")
         if self.broker == "alpaca" and not (self.alpaca_api_key and self.alpaca_secret_key):
             raise ValueError("broker 'alpaca' needs ALPACA_API_KEY and ALPACA_SECRET_KEY "
                              "(paper keys are free/instant at app.alpaca.markets)")
@@ -115,10 +132,11 @@ def _apply(section: object, data: dict) -> None:
 def load_config(path: str | Path) -> Config:
     cfg = Config()
     raw = yaml.safe_load(Path(path).read_text()) or {}
-    for name in ("mode", "broker", "db_path"):
+    for name in ("mode", "broker", "source", "db_path"):
         if name in raw:
             setattr(cfg, name, raw.pop(name))
     _apply(cfg.discord, raw.pop("discord", {}))
+    _apply(cfg.browser, raw.pop("browser", {}))
     _apply(cfg.trading, raw.pop("trading", {}))
     _apply(cfg.monitor, raw.pop("monitor", {}))
     if raw:

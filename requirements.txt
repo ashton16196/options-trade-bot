@@ -4,3 +4,6 @@ robin_stocks>=3.4
 pyotp>=2.9
 PyYAML>=6.0
 python-dotenv>=1.0
+# Only for source: browser (watching Discord in a Chrome window) —
+# after installing, also run: playwright install chromium
+# playwright>=1.45

@@ -84,14 +84,22 @@ async def run_bot(config_path: str) -> None:
             except Exception:
                 log.exception("failed handling signal %r", text[:140])
 
-    from .listener import DiscordListener
-
-    listener = DiscordListener(cfg.discord.channel_ids, handle)
     monitor_task = asyncio.create_task(monitor.run())
-    log.info("mode=%s | TP +%.0f%% | %d contract(s)/trade | max $%.0f/trade",
-             cfg.mode, cfg.trading.take_profit_pct,
+    log.info("mode=%s | broker=%s | source=%s | TP +%.0f%% | %d contract(s)/trade | max $%.0f/trade",
+             cfg.mode, cfg.broker, cfg.source, cfg.trading.take_profit_pct,
              cfg.trading.contracts_per_trade, cfg.trading.max_premium_per_trade)
     try:
-        await listener.start(cfg.discord_token)
+        if cfg.source == "browser":
+            from .listener_browser import BrowserListener
+
+            watcher = BrowserListener(
+                handle, channel_url=cfg.browser.channel_url,
+                poll_ms=cfg.browser.poll_ms, profile_dir=cfg.browser.profile_dir)
+            await watcher.run()
+        else:
+            from .listener import DiscordListener
+
+            listener = DiscordListener(cfg.discord.channel_ids, handle)
+            await listener.start(cfg.discord_token)
     finally:
         monitor_task.cancel()

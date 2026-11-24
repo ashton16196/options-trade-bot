@@ -9,13 +9,28 @@ mode: paper
 #               automated access is against Robinhood's terms — see README
 broker: alpaca
 
+# Where alerts come from:
+# "bot"     = a Discord bot in a server YOU control (channel-follow setup)
+# "browser" = watch the Discord web app in a Chrome window on this machine —
+#             no bot token needed; see "Watching your own screen" in README
+source: bot
+
 db_path: tradebot.db
 
 discord:
+  # Only used with source: bot.
   # Right-click a channel → "Copy Channel ID" (enable Developer Mode in
   # Discord settings → Advanced). The bot only reads these channels.
   channel_ids: []
     # - 123456789012345678
+
+browser:
+  # Only used with source: browser.
+  # Optional: the alert channel's URL, opened at startup. Leave empty and
+  # navigate there yourself in the Chrome window that opens.
+  channel_url: ""   # e.g. https://discord.com/channels/111111/222222
+  poll_ms: 750
+  profile_dir: .browser-profile
 
 trading:
   # Ignore alerts older than this (your "within 1 minute" rule)

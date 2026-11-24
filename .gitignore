@@ -9,6 +9,7 @@ config.yaml
 *.db-shm
 bot.log
 HALT
+.browser-profile/
 
 # robin_stocks cached session
 .tokens/

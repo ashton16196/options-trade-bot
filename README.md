@@ -51,7 +51,20 @@ Ranked from best to worst:
    *permits* user-account automation (unlike Discord). The listener here
    is swappable — a Telethon-based listener is a small add-on; ask and
    I'll wire it in.
-4. **A user-token "self-bot" on Discord.** This is what most copy-trade
+4. **Watch your own screen (`source: browser`).** The bot opens Discord's
+   web app in a real Chrome window on your machine; you log in once, open
+   the alert channel, and it reads new messages straight off the page —
+   no bot token, no access to their server needed beyond your own
+   membership. It reads the page's *text* rather than OCR-ing pixel
+   screenshots, because OCR misreads like ".52" → "52" spend real money;
+   and it never clicks anything — orders still go through the broker API.
+   Honestly: the script sends nothing and makes no Discord API calls of
+   its own, so it's far lower-risk than a self-bot and realistically very
+   hard to detect, but it's still a gray zone under Discord's
+   automated-accounts rule — options 1–3 are the clean ones. Requires the
+   machine to stay on and awake with the window open, and
+   `pip install playwright && playwright install chromium`.
+5. **A user-token "self-bot" on Discord.** This is what most copy-trade
    tools quietly do. It **violates Discord ToS** and risks termination of
    the very account that holds your paid membership. This repo doesn't
    ship one; if you go that route you own that risk.
